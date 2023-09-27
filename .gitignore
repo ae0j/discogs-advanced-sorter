@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite
+instance/
+.venv
+data/pages/*
+!data/pages/.gitkeep
+uuids.txt

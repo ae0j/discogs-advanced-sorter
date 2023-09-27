@@ -1,0 +1,59 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Roboto', sans-serif;
+  background-color: #f9f9f9;
+  height: 100%;
+}
+
+table { 
+  border-collapse: collapse; 
+}
+
+tr:nth-of-type(odd) { 
+  background: #eee; 
+}
+th { 
+  background: #616ae6; 
+  color: white; 
+  font-weight: bold; 
+}
+td, th { 
+  padding: 6px; 
+  border: none !important;
+  text-align: left; 
+}
+
+#myTable {
+  width: 100%;
+  max-width: 1600px;
+  margin: auto;
+}
+
+#customPage {
+  text-align: center;
+  padding: 10px;
+}
+
+.container {
+  width: 100%; 
+  max-width: 1600px; 
+  margin: auto; 
+}
+
+
+@media only screen and (max-width: 767px) {
+  td { 
+    border: none;
+    border-bottom: 1px solid #eee; 
+    position: relative;
+    padding-left: 50%; 
+    text-wrap: pretty;
+    }
+
+    .container {
+      width: 100%; 
+      margin: auto; 
+      text-wrap: pretty;
+    }
+}

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Discogs filter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="{{ url_for('static', filename='datatables/datatables.min.css') }}"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="{{ url_for('static', filename='styles_table.css') }}"
+    />
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="{{ url_for('static', filename='datatables/datatables.min.js') }}"></script>
+    <script
+      src="{{ url_for('static', filename='main_table.js') }}"
+      defer
+    ></script>
+  </head>
+  <body>
+    <div
+      class="container"
+      data-url="{{ url_for('serve_table_data', unique_id=unique_id) }}"
+    >
+      <table id="myTable" class="display cell-border compact">
+        <thead>
+          <tr>
+            <th>Hot Buy</th>
+            <th>Rarity score</th>
+            <th>Desire Gap</th>
+            <th>Have</th>
+            <th>Want</th>
+            <th>Title</th>
+            <th>Media Condition</th>
+            <th>Price</th>
+            <th>Link</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="customPage">
+        <label for="pageNumber">Go to page: </label>
+        <input type="number" id="pageNumber" min="1" />
+        <button id="goToPage">Go</button>
+      </div>
+    </div>
+  </body>
+</html>

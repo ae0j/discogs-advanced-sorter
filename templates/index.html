@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Discogs filter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="{{ url_for('static', filename='styles.css') }}"
+    />
+    <script src="{{ url_for('static', filename='main.js') }}" defer></script>
+    <script src="//unpkg.com/alpinejs" defer></script>
+    <script src="https://unpkg.com/htmx.org@1.9.5"></script>
+  </head>
+  <body>
+    <div id="main-div" x-data="pollingData()" x-init="init()">
+      <form @submit.prevent="submitForm">
+        <input
+          type="text"
+          name="user_input"
+          id="user_input"
+          placeholder="Enter seller's name"
+          autofocus
+        />
+        <div class="form-container">
+          <button type="submit" id="confirmButton" :disabled="isLoading">
+            Get collection
+          </button>
+        </div>
+      </form>
+      <div class="loading-bar" x-show="isLoading" style="display: none"></div>
+      <div id="message"></div>
+      <div id="output-div"></div>
+    </div>
+  </body>
+</html>
