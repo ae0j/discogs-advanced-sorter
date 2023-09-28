@@ -1,17 +1,9 @@
-from flask import (
-    Flask,
-    redirect,
-    render_template,
-    request,
-    jsonify,
-    url_for,
-)
+from flask import Flask, redirect, render_template, request, jsonify, url_for
 from process import (
+    TASKS_STATUS,
     verify_seller,
     save_uuid_to_file,
-    is_valid_uuid,
     initiate_task,
-    TASK_STATUS,
 )
 from config import Config
 
@@ -20,6 +12,7 @@ import uuid
 import pandas as pd
 import traceback
 import re
+import os
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -28,27 +21,38 @@ app.config.from_object(Config)
 @app.route("/", methods=["POST", "GET"])
 def index():
     if request.method == "POST":
-        user_input = request.form.get("user_input")
-        seller = verify_seller(user_input)
-        print(f"seller: {seller}")
+        unique_id = str(uuid.uuid4())
+        TASKS_STATUS[unique_id] = {"completed": False}
+        form_data = {
+            "user_input": request.form.get("user_input"),
+            "vinyls": "&format=Vinyl"
+            if request.form.get("vinyls_only") == "on"
+            else "",
+        }
+        is_seller = verify_seller(form_data["user_input"])
 
-        if not seller:
+        if not is_seller:
             return jsonify(
                 success=False,
                 message="This seller does not exist or does not offer any records for sale",
             )
         else:
-            threading.Thread(target=initiate_task, args=(user_input, app)).start()
+            threading.Thread(
+                target=initiate_task, args=(form_data, app, unique_id)
+            ).start()
             return jsonify(
-                success=True, message="Getting data... (May take up to a minute)"
+                success=True,
+                message="Getting data... (May take up to a minute)",
+                unique_id=unique_id,
             )
-
     return render_template("index.html")
 
 
-@app.route("/task_status")
-def task_status():
-    return jsonify(completed=TASK_STATUS["completed"])
+@app.route("/task_status/<unique_id>")
+def task_status(unique_id):
+    if unique_id not in TASKS_STATUS:
+        return jsonify(error="Invalid task id", completed=None), 404
+    return jsonify(completed=TASKS_STATUS[unique_id]["completed"])
 
 
 @app.route("/table/")
@@ -60,19 +64,19 @@ def render_table():
 
 @app.route("/table/<unique_id>")
 def render_table_with_id(unique_id):
-    if not is_valid_uuid(unique_id):
-        return "Invalid URL", 404
+    file_path = f"data/pages/{unique_id}.csv"
+    if not os.path.exists(file_path):
+        return "Seller's collection with this ID does not exist", 404
     return render_template("table.html", unique_id=unique_id)
 
 
 @app.route("/table_data/<unique_id>", methods=["POST"])
 def serve_table_data(unique_id):
     try:
-        print(f"Received unique_id: {unique_id}")
-        if not is_valid_uuid(unique_id):
-            return "Invalid URL", 404
+        """if not is_valid_uuid(unique_id):
+        return "Invalid URL", 404"""
 
-        df = pd.read_csv("data/pages/result.csv")
+        df = pd.read_csv(f"data/pages/{unique_id}.csv")
 
         total_records = len(df)
         draw = int(request.form.get("draw", 0))
@@ -136,13 +140,6 @@ def serve_table_data(unique_id):
         print("Error Occurred: ", str(e))
         print(traceback.format_exc())
         return "Internal Server Error", 500
-
-
-@app.route("/generate_table")
-def generate_table_request():
-    unique_id = str(uuid.uuid4())
-    save_uuid_to_file(unique_id)  # Save the UUID to file
-    return redirect(url_for("serve_table_data"))
 
 
 if __name__ == "__main__":

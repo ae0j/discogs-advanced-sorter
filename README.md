@@ -20,8 +20,9 @@
 ## Usage
 
 1. Input the seller's name.
-2. Click ‘Get Collection’.
-3. Browse through the seller's collection using advanced sorting options available.
+2. Choose **Get vinyls only** if you wish to get only vinyls
+3. Click ‘Get Collection’.
+4. Browse through the seller's collection using advanced sorting options available.
 
 ## Limitations
 

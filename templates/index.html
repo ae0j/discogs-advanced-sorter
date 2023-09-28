@@ -23,14 +23,19 @@
           placeholder="Enter seller's name"
           autofocus
         />
+
         <div class="form-container">
           <button type="submit" id="confirmButton" :disabled="isLoading">
             Get collection
           </button>
+          <div class="checkbox-container">
+            <input type="checkbox" id="vinylsOnly" name="vinyls_only" />
+            <label for="vinylsOnly" class="checkbox">Get vinyls only</label>
+          </div>
         </div>
       </form>
       <div class="loading-bar" x-show="isLoading" style="display: none"></div>
-      <div id="message"></div>
+      <div id="message" class="message"></div>
       <div id="output-div"></div>
     </div>
   </body>

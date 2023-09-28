@@ -21,7 +21,8 @@ function pollingData() {
         .then((data) => {
           document.getElementById("message").innerHTML = data.message;
           if (data.success) {
-            this.startTask();
+            this.uniqueId = data.unique_id;
+            this.pollForResult();
           } else {
             this.isLoading = false;
           }
@@ -30,16 +31,24 @@ function pollingData() {
     startTask() {
       this.isLoading = true;
       this.pollForResult();
+      fetch("/get_unique_id")
+        .then((response) => response.json())
+        .then((data) => {
+          const unique_id = data.unique_id;
+          if (unique_id) {
+            pollForResult(unique_id);
+          }
+        });
     },
     pollForResult() {
       const intervalId = setInterval(() => {
-        fetch("/task_status")
+        fetch(`/task_status/${this.uniqueId}`)
           .then((response) => response.json())
           .then((data) => {
             if (data.completed) {
               clearInterval(intervalId);
               this.isLoading = false;
-              window.location.href = "/table/";
+              window.location.href = `/table/${this.uniqueId}`;
             }
           });
       }, 3000);

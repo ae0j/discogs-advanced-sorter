@@ -6,8 +6,7 @@ import queue
 import concurrent.futures
 from config import Config
 
-
-TASK_STATUS = {"completed": False, "data": None}
+TASKS_STATUS = {}
 
 
 def save_uuid_to_file(unique_id):
@@ -21,12 +20,12 @@ def is_valid_uuid(unique_id):
         return unique_id + "\n" in lines
 
 
-def worker(q, seller, results_queue, year=0, count=0):
+def worker(q, form_data, results_queue, year=0, count=0):
     while not q.empty():
         try:
             page_number = q.get_nowait()
             records = scrap_and_process(
-                seller, start_page=page_number, year=year, count=count
+                form_data, start_page=page_number, year=year, count=count
             )
             results_queue.put(records)
         except queue.Empty:
@@ -37,22 +36,24 @@ def threaded_task(user_input, app_instance, year=0, count=0):
     return run_task(user_input, app_instance, year, count)
 
 
-def initiate_task(user_input, app_instance):
+def initiate_task(form_data, app_instance, unique_id):
     with app_instance.app_context():
         all_records = []
         total_items = 0
+
         try:
-            total_items = get_items(user_input)
+            total_items = get_items(form_data)
+
             if total_items <= 10000:
-                records = run_task(user_input, app_instance)
+                records = run_task(form_data, app_instance)
                 all_records.extend(records)
             elif total_items <= 20000:
-                records = run_task(user_input, app_instance)
+                records = run_task(form_data, app_instance)
                 all_records.extend(records)
-                records = run_task(user_input, app_instance, 0, total_items)
+                records = run_task(form_data, app_instance, 0, total_items)
                 all_records.extend(records)
             else:
-                year_data = get_years(user_input)
+                year_data = get_years(form_data)
 
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     futures = []
@@ -60,16 +61,16 @@ def initiate_task(user_input, app_instance):
                     for year, count in year_data:
                         if count <= 10000:
                             future = executor.submit(
-                                threaded_task, user_input, app_instance, year, count
+                                threaded_task, form_data, app_instance, year, count
                             )
                             futures.append(future)
                         else:
                             future = executor.submit(
-                                threaded_task, user_input, app_instance, year, count
+                                threaded_task, form_data, app_instance, year, count
                             )
                             futures.append(future)
                             future = executor.submit(
-                                threaded_task, user_input, app_instance, year, count=0
+                                threaded_task, form_data, app_instance, year, count=0
                             )
                             futures.append(future)
 
@@ -77,19 +78,20 @@ def initiate_task(user_input, app_instance):
                         records = future.result()
                         all_records.extend(records)
 
-            save_records_to_csv(all_records)
-            TASK_STATUS["completed"] = True
+            save_records_to_csv(all_records, unique_id)
+            TASKS_STATUS[unique_id]["completed"] = True
+            # return jsonify({"unique_id": unique_id})
 
         except Exception as e:
             print(f"Error in initiate_task function: {e}")
 
 
-def run_task(user_input, app_instance, year=0, count=0):
+def run_task(form_data, app_instance, year=0, count=0):
     print("run_task start")
     with app_instance.app_context():
         all_records_task = []
         try:
-            total_pages = get_threads(user_input, 1, year)
+            total_pages = get_threads(form_data, 1, year)
             task_queue = queue.Queue()
             results_queue = queue.Queue()
 
@@ -101,7 +103,7 @@ def run_task(user_input, app_instance, year=0, count=0):
                     executor.submit(
                         worker,
                         task_queue,
-                        user_input,
+                        form_data,
                         results_queue,
                         year,
                         count,
@@ -121,7 +123,7 @@ def verify_seller(seller):
     try:
         print(f"Input: {seller}")
         response = requests.get(
-            Config.DISCOGS_URL.format(seller, 1),
+            Config.DISCOGS_URL.format(seller, "", 1),
             headers=Config.headers_agent,
         )
         print(response)
@@ -142,10 +144,12 @@ def verify_seller(seller):
         print(f"Error in verify_seller function: {e}")
 
 
-def save_records_to_csv(records):
-    seen_hrefs = set()  # Set to keep track of unique hrefs
+def save_records_to_csv(records, unique_id):
+    seen_hrefs = set()
 
-    with open("data/pages/result.csv", "w", newline="", encoding="utf-8") as csvfile:
+    with open(
+        f"data/pages/{unique_id}.csv", "w", newline="", encoding="utf-8"
+    ) as csvfile:
         fieldnames = [
             "hot_buy",
             "rarity_score",
@@ -166,38 +170,48 @@ def save_records_to_csv(records):
                 writer.writerow(record)
 
 
-def scrap_and_process(seller, start_page=1, year=0, count=0):
+def scrap_and_process(form_data, start_page=1, year=0, count=0):
     print("scrap_and_process start")
     try:
         if year == 0 and count == 0:
-            print(f"Scraping page: {Config.DISCOGS_URL.format(seller, start_page)}")
+            print(
+                f"Scraping page: {Config.DISCOGS_URL.format(form_data['user_input'],form_data['vinyls'], start_page)}"
+            )
             response = requests.get(
-                Config.DISCOGS_URL.format(seller, start_page),
+                Config.DISCOGS_URL.format(
+                    form_data["user_input"], form_data["vinyls"], start_page
+                ),
                 headers=Config.headers_agent,
             )
         elif year == 0 and count != 0:
             print(
-                f"Scraping LARGE page: {Config.DISCOGS_URL_ASC.format(seller, start_page)}"
+                f"Scraping LARGE page: {Config.DISCOGS_URL_ASC.format(form_data['user_input'],form_data['vinyls'], start_page)}"
             )
             response = requests.get(
-                Config.DISCOGS_URL_ASC.format(seller, start_page),
+                Config.DISCOGS_URL_ASC.format(
+                    form_data["user_input"], form_data["vinyls"], start_page
+                ),
                 headers=Config.headers_agent,
             )
         elif year != 0:
             if count <= 10000:
                 print(
-                    f"Scraping YEAR: {Config.DISCOGS_URL_YEAR_PAGE.format(seller, year, start_page)}"
+                    f"Scraping YEAR: {Config.DISCOGS_URL_YEAR_PAGE.format(form_data['user_input'],form_data['vinyls'], year, start_page)}"
                 )
                 response = requests.get(
-                    Config.DISCOGS_URL_YEAR_PAGE.format(seller, year, start_page),
+                    Config.DISCOGS_URL_YEAR_PAGE.format(
+                        form_data["user_input"], form_data["vinyls"], year, start_page
+                    ),
                     headers=Config.headers_agent,
                 )
             else:
                 print(
-                    f"Scraping YEAR OVER 10 000: {Config.DISCOGS_URL_YEAR_ASC_PAGE.format(seller, year, start_page)}"
+                    f"Scraping YEAR OVER 10 000: {Config.DISCOGS_URL_YEAR_ASC_PAGE.format(form_data['user_input'],form_data['vinyls'], year, start_page)}"
                 )
                 response = requests.get(
-                    Config.DISCOGS_URL_YEAR_ASC_PAGE.format(seller, year, start_page),
+                    Config.DISCOGS_URL_YEAR_ASC_PAGE.format(
+                        form_data["user_input"], form_data["vinyls"], year, start_page
+                    ),
                     headers=Config.headers_agent,
                 )
 
@@ -258,10 +272,12 @@ def calculate_pages(value):
     return x
 
 
-def get_years(seller):
+def get_years(form_data):
     print("get_years start")
     response = requests.get(
-        Config.DISCOGS_URL_YEAR_LIST.format(seller),
+        Config.DISCOGS_URL_YEAR_LIST.format(
+            form_data["user_input"], form_data["vinyls"]
+        ),
         headers=Config.headers_agent,
     )
 
@@ -280,16 +296,20 @@ def get_years(seller):
     return year_data
 
 
-def get_threads(seller, start_page=1, year=0):
+def get_threads(form_data, start_page=1, year=0):
     print("get_threads start")
     if year == 0:
         response = requests.get(
-            Config.DISCOGS_URL.format(seller, start_page),
+            Config.DISCOGS_URL.format(
+                form_data["user_input"], form_data["vinyls"], start_page
+            ),
             headers=Config.headers_agent,
         )
     elif year != 0:
         response = requests.get(
-            Config.DISCOGS_URL_YEAR_PAGE.format(seller, year, start_page),
+            Config.DISCOGS_URL_YEAR_PAGE.format(
+                form_data["user_input"], form_data["vinyls"], year, start_page
+            ),
             headers=Config.headers_agent,
         )
 
@@ -303,10 +323,13 @@ def get_threads(seller, start_page=1, year=0):
     return calculate_pages(total_items)
 
 
-def get_items(seller, start_page=1):
+def get_items(form_data, start_page=1):
     print("get_items start")
+
     response = requests.get(
-        Config.DISCOGS_URL.format(seller, start_page),
+        Config.DISCOGS_URL.format(
+            form_data["user_input"], form_data["vinyls"], start_page
+        ),
         headers=Config.headers_agent,
     )
 
