@@ -38,15 +38,14 @@ $(document).ready(function () {
     drawCallback: function (o) {
       var newStart = this.api().page.info().start;
 
-      if ( newStart != oldStart ) {
-        var targetOffset = $('#myTable').offset().top;
-        $('html,body').animate({scrollTop: targetOffset}, 0);
+      if (newStart != oldStart) {
+        var targetOffset = $("#myTable").offset().top;
+        $("html,body").animate({ scrollTop: targetOffset }, 0);
         oldStart = newStart;
       }
-    }
-
+    },
   });
-  
+
   $("#goToPage").on("click", function () {
     var pageNum = $("#pageNumber").val();
     if (pageNum) {

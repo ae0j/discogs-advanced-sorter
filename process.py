@@ -4,6 +4,7 @@ from selectolax.parser import HTMLParser
 import csv
 import queue
 import concurrent.futures
+import html
 from config import Config
 
 TASKS_STATUS = {}
@@ -217,13 +218,13 @@ def scrap_and_process(form_data, start_page=1, year=0, count=0):
                     headers=Config.headers_agent,
                 )
 
-        html = HTMLParser(response.text)
+        htmlParser = HTMLParser(response.text)
 
-        titles = html.css(".item_description_title")
+        titles = htmlParser.css(".item_description_title")
         hrefs = [node.attributes.get("href") for node in titles]
-        prices = html.css(".item_price .price")
-        conditions = html.css(".item_condition > span:nth-child(3)")
-        rows = html.css("tbody tr")
+        prices = htmlParser.css(".item_price .price")
+        conditions = htmlParser.css(".item_condition > span:nth-child(3)")
+        rows = htmlParser.css("tbody tr")
         weight = 100
 
         records = []
@@ -254,9 +255,13 @@ def scrap_and_process(form_data, start_page=1, year=0, count=0):
                 "desire_gap": desire_gap,
                 "have": have.text() if have else 0,
                 "want": want.text() if want else 0,
-                "artist": re.sub(r' - .*$', '', title.text()),
-                "title": re.sub(r'\([^\(]*\)$', '', re.sub(r'^[^-]*- ', '', title.text())),
-                "format": re.sub(r'\)$','', re.sub(r'^\(','', re.sub(r'^\([^\(]*\(', '(', re.sub(r'^[^\(]*', '', title.text())))),
+                "artist": re.sub(r" - .*$", "", title.text()),
+                "title": html.escape(
+                    re.sub(r"\([^\(]*\)$", "", re.sub(r"^[^-]*- ", "", title.text()))
+                ),
+                "format": re.search(r"\(([^()]+)\)\s*$", title.text()).group(1)
+                if re.search(r"\(([^()]+)\)\s*$", title.text())
+                else None,
                 "condition": item_condition,
                 "price": price.text(),
                 "href": href,
