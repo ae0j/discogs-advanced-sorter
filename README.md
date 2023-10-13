@@ -2,7 +2,7 @@
 
 ## Features
 
-- Retrieves a seller's collection and displays it as an interactive HTML table.
+- Retrieves a seller's inventory and displays it as an interactive HTML table.
 - Offers sorting options, including:
   - Want
   - Have
@@ -22,9 +22,9 @@
 1. Input the seller's name.
 2. Choose **Get vinyls only** if you wish to get only vinyls
 3. Click ‘Get Collection’.
-4. Browse through the seller's collection using advanced sorting options available.
+4. Browse through the seller's inventory using advanced sorting options available.
 
 ## Limitations
 
-- May not perform optimally with very large seller collections (exceeding 500,000 records).
+- May not perform optimally with very large seller inventories (exceeding 500,000 records).
 - Currently doesn't retrieve records that lack a release year.

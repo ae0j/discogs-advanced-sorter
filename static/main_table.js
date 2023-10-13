@@ -1,5 +1,6 @@
 $(document).ready(function () {
   var url = $(".container").data("url");
+  var oldStart = 0;
   var table = $("#myTable").DataTable({
     processing: true,
     serverSide: true,
@@ -16,7 +17,7 @@ $(document).ready(function () {
     columnDefs: [
       { targets: "_all", orderSequence: ["desc", "asc"] },
       {
-        targets: 8,
+        targets: 10,
         orderable: false,
         render: function (data, type, row, meta) {
           if (type === "display") {
@@ -30,12 +31,22 @@ $(document).ready(function () {
         },
       },
       {
-        targets: 6,
+        targets: 8,
         orderable: false,
       },
     ],
-  });
+    drawCallback: function (o) {
+      var newStart = this.api().page.info().start;
 
+      if ( newStart != oldStart ) {
+        var targetOffset = $('#myTable').offset().top;
+        $('html,body').animate({scrollTop: targetOffset}, 0);
+        oldStart = newStart;
+      }
+    }
+
+  });
+  
   $("#goToPage").on("click", function () {
     var pageNum = $("#pageNumber").val();
     if (pageNum) {
