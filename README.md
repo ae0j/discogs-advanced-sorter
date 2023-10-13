@@ -21,7 +21,7 @@
 
 1. Input the seller's name.
 2. Choose **Get vinyls only** if you wish to get only vinyls
-3. Click ‘Get Collection’.
+3. Click ‘Get Inventory’.
 4. Browse through the seller's inventory using advanced sorting options available.
 
 ## Limitations
