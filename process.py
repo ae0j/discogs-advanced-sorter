@@ -1,5 +1,5 @@
 import re
-import requests
+import cloudscraper
 from selectolax.parser import HTMLParser
 import csv
 import queue
@@ -123,7 +123,8 @@ def run_task(form_data, app_instance, year=0, count=0):
 def verify_seller(seller):
     try:
         print(f"Input: {seller}")
-        response = requests.get(
+        scraper = cloudscraper.create_scraper()
+        response = scraper.get(
             Config.DISCOGS_URL.format(seller, "", 1),
             headers=Config.headers_agent,
         )
@@ -175,12 +176,13 @@ def save_records_to_csv(records, unique_id):
 
 def scrap_and_process(form_data, start_page=1, year=0, count=0):
     print("scrap_and_process start")
+    scraper = cloudscraper.create_scraper()
     try:
         if year == 0 and count == 0:
             print(
                 f"Scraping page: {Config.DISCOGS_URL.format(form_data['user_input'],form_data['vinyls'], start_page)}"
             )
-            response = requests.get(
+            response = scraper.get(
                 Config.DISCOGS_URL.format(
                     form_data["user_input"], form_data["vinyls"], start_page
                 ),
@@ -190,7 +192,7 @@ def scrap_and_process(form_data, start_page=1, year=0, count=0):
             print(
                 f"Scraping LARGE page: {Config.DISCOGS_URL_ASC.format(form_data['user_input'],form_data['vinyls'], start_page)}"
             )
-            response = requests.get(
+            response = scraper.get(
                 Config.DISCOGS_URL_ASC.format(
                     form_data["user_input"], form_data["vinyls"], start_page
                 ),
@@ -201,7 +203,7 @@ def scrap_and_process(form_data, start_page=1, year=0, count=0):
                 print(
                     f"Scraping YEAR: {Config.DISCOGS_URL_YEAR_PAGE.format(form_data['user_input'],form_data['vinyls'], year, start_page)}"
                 )
-                response = requests.get(
+                response = scraper.get(
                     Config.DISCOGS_URL_YEAR_PAGE.format(
                         form_data["user_input"], form_data["vinyls"], year, start_page
                     ),
@@ -211,7 +213,7 @@ def scrap_and_process(form_data, start_page=1, year=0, count=0):
                 print(
                     f"Scraping YEAR OVER 10 000: {Config.DISCOGS_URL_YEAR_ASC_PAGE.format(form_data['user_input'],form_data['vinyls'], year, start_page)}"
                 )
-                response = requests.get(
+                response = scraper.get(
                     Config.DISCOGS_URL_YEAR_ASC_PAGE.format(
                         form_data["user_input"], form_data["vinyls"], year, start_page
                     ),
@@ -240,7 +242,7 @@ def scrap_and_process(form_data, start_page=1, year=0, count=0):
             desire_gap = want_value - have_value
 
             price_value = price.text()
-            price_numeric = float(re.sub("[^\d\.]", "", price_value))
+            price_numeric = float(re.sub(r"[^\d\.]", "", price_value))
             rarity_score = round(desire_gap / (have_value + 1), 5)
             item_condition = re.search(r"\((.*?)\)", condition.text()).group(1)
             hot_buy = round(
@@ -259,9 +261,11 @@ def scrap_and_process(form_data, start_page=1, year=0, count=0):
                 "title": html.escape(
                     re.sub(r"\([^\(]*\)$", "", re.sub(r"^[^-]*- ", "", title.text()))
                 ),
-                "format": re.search(r"\(([^()]+)\)\s*$", title.text()).group(1)
-                if re.search(r"\(([^()]+)\)\s*$", title.text())
-                else None,
+                "format": (
+                    re.search(r"\(([^()]+)\)\s*$", title.text()).group(1)
+                    if re.search(r"\(([^()]+)\)\s*$", title.text())
+                    else None
+                ),
                 "condition": item_condition,
                 "price": price.text(),
                 "href": href,
@@ -283,7 +287,8 @@ def calculate_pages(value):
 
 def get_years(form_data):
     print("get_years start")
-    response = requests.get(
+    scraper = cloudscraper.create_scraper()
+    response = scraper.get(
         Config.DISCOGS_URL_YEAR_LIST.format(
             form_data["user_input"], form_data["vinyls"]
         ),
@@ -307,15 +312,16 @@ def get_years(form_data):
 
 def get_threads(form_data, start_page=1, year=0):
     print("get_threads start")
+    scraper = cloudscraper.create_scraper()
     if year == 0:
-        response = requests.get(
+        response = scraper.get(
             Config.DISCOGS_URL.format(
                 form_data["user_input"], form_data["vinyls"], start_page
             ),
             headers=Config.headers_agent,
         )
     elif year != 0:
-        response = requests.get(
+        response = scraper.get(
             Config.DISCOGS_URL_YEAR_PAGE.format(
                 form_data["user_input"], form_data["vinyls"], year, start_page
             ),
@@ -334,8 +340,8 @@ def get_threads(form_data, start_page=1, year=0):
 
 def get_items(form_data, start_page=1):
     print("get_items start")
-
-    response = requests.get(
+    scraper = cloudscraper.create_scraper()
+    response = scraper.get(
         Config.DISCOGS_URL.format(
             form_data["user_input"], form_data["vinyls"], start_page
         ),
