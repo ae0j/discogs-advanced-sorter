@@ -3,7 +3,7 @@ import re
 import threading
 import traceback
 import uuid
-
+from urllib.parse import quote_plus
 import pandas as pd
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
@@ -35,9 +35,9 @@ def index():
         if request.form.get("vinyls_only") == "on":
             form_data["vinyls"] = "&format=Vinyl"
         if genre:
-            form_data["genre"] = f"&genre={genre}"
+            form_data["genre"] = f"&genre={quote_plus(genre)}"
         if style:
-            form_data["style"] = f"&style={style}"
+            form_data["style"] = f"&style={quote_plus(style)}"
 
         print(f"Form data: {form_data}")  # Debug print
         is_seller = verify_seller(form_data["user_input"])
