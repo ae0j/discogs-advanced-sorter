@@ -2,10 +2,11 @@ class Config:
     SERVER_NAME = "127.0.0.1:5000"
     APPLICATION_ROOT = "/"
     PREFERRED_URL_SCHEME = "http"
-    DISCOGS_URL = "https://www.discogs.com/seller/{}/profile?sort=listed%2Cdesc&limit=250{}&page={}"
-    DISCOGS_URL_ASC = "https://www.discogs.com/seller/{}/profile?sort=listed%2Casc&limit=250{}&page={}"
-    DISCOGS_URL_YEAR_PAGE = "https://www.discogs.com/seller/{}/profile?sort=listed%2Cdesc&limit=250{}&year={}&page={}"
-    DISCOGS_URL_YEAR_ASC_PAGE = "https://www.discogs.com/seller/{}/profile?sort=listed%2Casc&limit=250{}&year={}&page={}"
+    # Base URLs with placeholders for seller, format/vinyl, genre, style, page, and year
+    DISCOGS_URL = "https://www.discogs.com/seller/{}/profile?sort=listed%2Cdesc&limit=250{}{}{}&page={}"
+    DISCOGS_URL_ASC = "https://www.discogs.com/seller/{}/profile?sort=listed%2Casc&limit=250{}{}{}&page={}"
+    DISCOGS_URL_YEAR_PAGE = "https://www.discogs.com/seller/{}/profile?sort=listed%2Cdesc&limit=250{}{}{}&year={}&page={}"
+    DISCOGS_URL_YEAR_ASC_PAGE = "https://www.discogs.com/seller/{}/profile?sort=listed%2Casc&limit=250{}{}{}&year={}&page={}"
     DISCOGS_URL_YEAR_LIST = "https://www.discogs.com/sell/_mp_facets?sort=listed%2Cdesc&limit=250&seller={}{}&header_type=seller&more=year&listing_type=listing&attempt=1"
     HEADERS = {
         "Accept-Encoding": "gzip, deflate, br",

@@ -50,6 +50,18 @@ input {
   justify-content: center;
 }
 
+.input-container {
+  margin: 10px 0;
+}
+
+.input-container input {
+  width: 200px;
+  padding: 8px 15px;
+  border: 1px solid #ccc;
+  border-radius: 12px;
+  font-size: 16px;
+}
+
 #main-div {
   display: flex;
   justify-content: center;
