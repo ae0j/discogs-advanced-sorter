@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 pick_python() {
-  for candidate in python3.11 python3.10 python3.12 python3; do
+  for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
     if command -v "$candidate" >/dev/null 2>&1; then
       echo "$candidate"
       return 0
@@ -15,17 +15,17 @@ pick_python() {
 }
 
 if ! PYTHON_BIN="$(pick_python)"; then
-  echo "Python is not installed. Install Python 3.10-3.12 first."
+  echo "Python is not installed. Install Python 3.10-3.13 first."
   echo "https://www.python.org/downloads/"
   exit 1
 fi
 
 PY_VERSION="$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 case "$PY_VERSION" in
-  3.10|3.11|3.12) ;;
+  3.10|3.11|3.12|3.13) ;;
   *)
     echo "Unsupported Python version: $PY_VERSION"
-    echo "Please use Python 3.10, 3.11, or 3.12."
+    echo "Please use Python 3.10, 3.11, 3.12, or 3.13."
     exit 1
     ;;
 esac

@@ -1,38 +1,51 @@
 @echo off
-setlocal
+setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
 set "PY_CMD="
+set "PY_VERSION="
+set "DETECTED_PY="
 
 where py >nul 2>nul
 if not errorlevel 1 (
-  py -3.11 -c "import sys" >nul 2>nul && set "PY_CMD=py -3.11"
-  if not defined PY_CMD py -3.10 -c "import sys" >nul 2>nul && set "PY_CMD=py -3.10"
-  if not defined PY_CMD py -3.12 -c "import sys" >nul 2>nul && set "PY_CMD=py -3.12"
+  for %%V in (3.13 3.12 3.11 3.10) do (
+    py -%%V -c "import sys" >nul 2>nul
+    if not errorlevel 1 if not defined PY_CMD (
+      set "PY_CMD=py -%%V"
+      set "PY_VERSION=%%V"
+    )
+  )
+  for /f "delims=" %%i in ('py -0p 2^>nul') do (
+    if not defined DETECTED_PY set "DETECTED_PY=%%i"
+  )
 )
 
 if not defined PY_CMD (
   where python >nul 2>nul
-  if not errorlevel 1 set "PY_CMD=python"
+  if not errorlevel 1 (
+    for /f "delims=" %%i in ('python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2^>nul') do set "PY_VERSION=%%i"
+    if "!PY_VERSION!"=="3.10" set "PY_CMD=python"
+    if "!PY_VERSION!"=="3.11" set "PY_CMD=python"
+    if "!PY_VERSION!"=="3.12" set "PY_CMD=python"
+    if "!PY_VERSION!"=="3.13" set "PY_CMD=python"
+  )
 )
 
 if not defined PY_CMD (
-  echo Python is not installed. Install Python 3.10-3.12 first:
+  echo No supported Python interpreter found.
+  if defined PY_VERSION echo Detected unsupported Python version: !PY_VERSION!
+  if defined DETECTED_PY echo Installed interpreters: !DETECTED_PY!
+  echo Please install Python 3.10-3.13 from:
   echo https://www.python.org/downloads/
+  echo.
+  echo If Windows shows Microsoft Store alias messages for python.exe:
+  echo Settings ^> Apps ^> Advanced app settings ^> App execution aliases
+  echo Disable aliases for python.exe and python3.exe
   pause
   exit /b 1
 )
 
-for /f "delims=" %%i in ('%PY_CMD% -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"') do set "PY_VERSION=%%i"
-
-if /i not "%PY_VERSION%"=="3.10" if /i not "%PY_VERSION%"=="3.11" if /i not "%PY_VERSION%"=="3.12" (
-  echo Unsupported Python version: %PY_VERSION%
-  echo Please use Python 3.10, 3.11, or 3.12.
-  pause
-  exit /b 1
-)
-
-echo Using Python %PY_VERSION%
+echo Using Python !PY_VERSION!
 
 if not exist ".venv\Scripts\python.exe" (
   %PY_CMD% -m venv .venv

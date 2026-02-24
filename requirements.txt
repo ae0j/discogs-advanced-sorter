@@ -1,5 +1,6 @@
 Flask==2.3.3
 cloudscraper==1.2.71
-pandas==2.1.1
-numpy>=1.22.4,<2
-selectolax==0.3.16
+pandas==2.2.3
+numpy>=1.22.4,<2; python_version < "3.13"
+numpy>=2.1.0,<2.3; python_version >= "3.13"
+selectolax==0.3.23

@@ -7,7 +7,7 @@
 
 ## Requirements
 
-- Python 3.10, 3.11, or 3.12
+- Python 3.10, 3.11, 3.12, or 3.13
 
 ## Quick Start (Recommended)
 
@@ -32,7 +32,7 @@ The scripts create `.venv`, install dependencies, and start the app.
 ### macOS/Linux
 
 ```bash
-python3.10 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
@@ -43,7 +43,7 @@ flask --app app run
 ### Windows
 
 ```bat
-py -3.10 -m venv .venv
+py -3 -m venv .venv
 .venv\Scripts\activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
@@ -64,6 +64,10 @@ flask --app app run
 - `Too many open files`:
   - On macOS/Linux, run `ulimit -n 65535` in the same terminal before starting.
   - The `run.command` script already applies a higher limit automatically.
+- Windows says Python is not found / opens Microsoft Store / shows unsupported version:
+  - Install Python 3.10, 3.11, 3.12, or 3.13 from `python.org`.
+  - Disable `python.exe` and `python3.exe` in **App execution aliases**.
+  - Re-run `run.bat`.
 
 ## Limitations
 
