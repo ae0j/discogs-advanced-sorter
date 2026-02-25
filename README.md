@@ -5,6 +5,10 @@
 - Retrieves a seller's inventory and displays it as an interactive HTML table.
 - Offers sorting options including Want, Have, Desire Gap, Rarity Score, Hot Buy, and more.
 
+## Preview
+
+![Discogs Advanced Sorter UI](assets/app-preview.png)
+
 ## Requirements
 
 - Python 3.10, 3.11, 3.12, or 3.13
