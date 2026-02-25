@@ -3,12 +3,18 @@ import re
 import threading
 import traceback
 import uuid
-from urllib.parse import quote_plus
 import pandas as pd
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
 from config import Config
-from process import TASKS_STATUS, initiate_task, save_uuid_to_file, verify_seller
+from process import (
+    TASKS_STATUS,
+    initiate_task,
+    parse_and_validate_sell_list_url,
+    save_uuid_to_file,
+    verify_filtered_url,
+    verify_seller,
+)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -18,44 +24,57 @@ app.config.from_object(Config)
 def index():
     if request.method == "POST":
         unique_id = str(uuid.uuid4())
-        TASKS_STATUS[unique_id] = {"completed": False}
+        TASKS_STATUS[unique_id] = {"completed": False, "error": None}
 
-        # Get the genre and style values
-        genre = request.form.get("genre", "").strip()
-        style = request.form.get("style", "").strip()
+        seller_input = request.form.get("user_input", "").strip()
+        filtered_url = request.form.get("filtered_url", "").strip()
 
         form_data = {
-            "user_input": request.form.get("user_input"),
+            "mode": "seller",
+            "user_input": seller_input,
+            "filtered_url": filtered_url,
             "vinyls": "",  # Initialize empty
-            "genre": "",  # Initialize empty
-            "style": "",  # Initialize empty
+            "genre": "",
+            "style": "",
         }
 
-        # Only add parameters if they are provided
-        if request.form.get("vinyls_only") == "on":
-            form_data["vinyls"] = "&format=Vinyl"
-        if genre:
-            form_data["genre"] = f"&genre={quote_plus(genre)}"
-        if style:
-            form_data["style"] = f"&style={quote_plus(style)}"
-
-        print(f"Form data: {form_data}")  # Debug print
-        is_seller = verify_seller(form_data["user_input"])
-
-        if not is_seller:
+        if not seller_input and not filtered_url:
             return jsonify(
                 success=False,
-                message="This seller does not exist or does not offer any records for sale",
+                message="Please provide a seller name or a Discogs /sell/list or /seller/username/profile URL",
             )
+
+        if filtered_url:
+            try:
+                url_data = parse_and_validate_sell_list_url(filtered_url)
+            except ValueError as exc:
+                return jsonify(success=False, message=str(exc))
+
+            form_data["mode"] = "url"
+            form_data["url_query_params"] = url_data["base_query_params"]
+
+            print(f"Form data (URL mode): {form_data}")  # Debug print
+            if not verify_filtered_url(form_data["url_query_params"]):
+                return jsonify(
+                    success=False,
+                    message="This Discogs URL is invalid or has no records for sale",
+                )
         else:
-            threading.Thread(
-                target=initiate_task, args=(form_data, app, unique_id)
-            ).start()
-            return jsonify(
-                success=True,
-                message="Getting data... (May take up to a minute)",
-                unique_id=unique_id,
-            )
+            print(f"Form data (seller mode): {form_data}")  # Debug print
+            is_seller = verify_seller(form_data["user_input"])
+
+            if not is_seller:
+                return jsonify(
+                    success=False,
+                    message="This seller does not exist or does not offer any records for sale",
+                )
+
+        threading.Thread(target=initiate_task, args=(form_data, app, unique_id)).start()
+        return jsonify(
+            success=True,
+            message="Getting data... (May take up to a minute)",
+            unique_id=unique_id,
+        )
     return render_template("index.html")
 
 
@@ -63,7 +82,10 @@ def index():
 def task_status(unique_id):
     if unique_id not in TASKS_STATUS:
         return jsonify(error="Invalid task id", completed=None), 404
-    return jsonify(completed=TASKS_STATUS[unique_id]["completed"])
+    return jsonify(
+        completed=TASKS_STATUS[unique_id]["completed"],
+        error=TASKS_STATUS[unique_id].get("error"),
+    )
 
 
 @app.route("/table/")
@@ -174,4 +196,6 @@ def serve_table_data(unique_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    host = os.getenv("APP_HOST", "127.0.0.1")
+    port = int(os.getenv("APP_PORT", "5080"))
+    app.run(debug=True, host=host, port=port)

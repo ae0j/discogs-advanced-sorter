@@ -48,6 +48,9 @@ if [ -n "${HARD_LIMIT:-}" ] && [ "$HARD_LIMIT" != "unlimited" ]; then
   ulimit -n "$HARD_LIMIT" 2>/dev/null || true
 fi
 
+APP_HOST="${APP_HOST:-127.0.0.1}"
+APP_PORT="${APP_PORT:-5080}"
+
 echo "Open file limit: $(ulimit -Sn 2>/dev/null || echo "unknown")"
-echo "Starting app at http://127.0.0.1:5000"
-exec flask --app app run
+echo "Starting app at http://${APP_HOST}:${APP_PORT}"
+exec flask --app app run --host "$APP_HOST" --port "$APP_PORT"

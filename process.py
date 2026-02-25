@@ -3,13 +3,44 @@ import csv
 import html
 import queue
 import re
+import time
+from urllib.parse import parse_qsl, unquote, urlencode, urlparse
 
 import cloudscraper
 from selectolax.parser import HTMLParser
 
 from config import Config
 
+try:
+    import resource
+except ImportError:
+    resource = None
+
 TASKS_STATUS = {}
+SUPPORTED_DISCOGS_HOSTS = {"discogs.com", "www.discogs.com"}
+REMOVED_FILTER_KEYS = {"page", "limit", "sort"}
+RETRYABLE_STATUS_CODES = {403, 429, 500, 502, 503, 504, 520, 522, 524}
+
+
+def format_count(value):
+    return f"{int(value):,}"
+
+
+def get_mode_limits(form_data):
+    mode = get_request_mode(form_data)
+    if mode == "url":
+        max_pages_per_segment = int(Config.URL_MODE_MAX_PAGES_PER_SEGMENT)
+    else:
+        max_pages_per_segment = int(Config.SELLER_MODE_MAX_PAGES_PER_SEGMENT)
+
+    single_pass_limit = max_pages_per_segment * int(Config.RESULTS_PER_PAGE)
+    dual_pass_limit = single_pass_limit * 2
+    return {
+        "mode": mode,
+        "max_pages_per_segment": max_pages_per_segment,
+        "single_pass_limit": single_pass_limit,
+        "dual_pass_limit": dual_pass_limit,
+    }
 
 
 def save_uuid_to_file(unique_id):
@@ -23,6 +54,189 @@ def is_valid_uuid(unique_id):
         return unique_id + "\n" in lines
 
 
+def parse_and_validate_sell_list_url(raw_url):
+    if not raw_url:
+        raise ValueError("Please provide a Discogs filtered URL")
+
+    parsed = urlparse(raw_url.strip())
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("Use valid Discogs URL.")
+
+    if (parsed.hostname or "").lower() not in SUPPORTED_DISCOGS_HOSTS:
+        raise ValueError("Only discogs.com URLs are supported")
+
+    path = parsed.path.rstrip("/")
+    profile_match = re.fullmatch(r"/seller/([^/]+)/profile", path)
+    is_sell_list_url = path == "/sell/list"
+    is_profile_url = profile_match is not None
+    if not is_sell_list_url and not is_profile_url:
+        raise ValueError(
+            "Supported URLs: /sell/list or /seller/username/profile on Discogs"
+        )
+
+    base_query_params = []
+    for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+        if key.lower() in REMOVED_FILTER_KEYS:
+            continue
+        if is_profile_url and key.lower() == "seller":
+            continue
+        base_query_params.append((key, value))
+
+    if is_profile_url:
+        seller_name = unquote(profile_match.group(1)).strip()
+        if not seller_name:
+            raise ValueError("Could not determine seller from Discogs profile URL")
+        # Canonicalize profile URLs into /sell/list query mode.
+        base_query_params.insert(0, ("seller", seller_name))
+
+    return {"base_query_params": base_query_params}
+
+
+def build_sell_list_page_url(base_query_params, page, sort, year=None):
+    query_params = list(base_query_params)
+    has_user_year_filter = any(key.lower() == "year" for key, _ in query_params)
+    query_params.extend([("sort", sort), ("limit", "250")])
+    if year not in (None, 0, "0") and not has_user_year_filter:
+        query_params.append(("year", str(year)))
+    query_params.append(("page", str(page)))
+    return f"{Config.DISCOGS_SELL_LIST_URL}?{urlencode(query_params, doseq=True)}"
+
+
+def build_sell_list_year_facets_url(base_query_params):
+    query_params = list(base_query_params)
+    query_params.extend(
+        [
+            ("sort", "listed,desc"),
+            ("limit", "250"),
+            ("more", "year"),
+            ("listing_type", "listing"),
+            ("attempt", "1"),
+        ]
+    )
+    return f"{Config.DISCOGS_SELL_FACETS_URL}?{urlencode(query_params, doseq=True)}"
+
+
+def get_request_mode(form_data):
+    return form_data.get("mode", "seller")
+
+
+def build_seller_page_url(form_data, page, sort, year=0):
+    if year == 0:
+        if sort == "listed,asc":
+            return Config.DISCOGS_URL_ASC.format(
+                form_data["user_input"],
+                form_data["vinyls"],
+                form_data.get("genre", ""),
+                form_data.get("style", ""),
+                page,
+            )
+        return Config.DISCOGS_URL.format(
+            form_data["user_input"],
+            form_data["vinyls"],
+            form_data.get("genre", ""),
+            form_data.get("style", ""),
+            page,
+        )
+
+    if sort == "listed,asc":
+        return Config.DISCOGS_URL_YEAR_ASC_PAGE.format(
+            form_data["user_input"],
+            form_data["vinyls"],
+            form_data.get("genre", ""),
+            form_data.get("style", ""),
+            year,
+            page,
+        )
+    return Config.DISCOGS_URL_YEAR_PAGE.format(
+        form_data["user_input"],
+        form_data["vinyls"],
+        form_data.get("genre", ""),
+        form_data.get("style", ""),
+        year,
+        page,
+    )
+
+
+def build_marketplace_page_url(form_data, page, sort, year=0):
+    if get_request_mode(form_data) == "url":
+        return build_sell_list_page_url(
+            form_data["url_query_params"], page=page, sort=sort, year=year
+        )
+    return build_seller_page_url(form_data, page=page, sort=sort, year=year)
+
+
+def build_year_facets_url(form_data):
+    if get_request_mode(form_data) == "url":
+        return build_sell_list_year_facets_url(form_data["url_query_params"])
+    return Config.DISCOGS_URL_YEAR_LIST.format(
+        form_data["user_input"],
+        form_data["vinyls"],
+        form_data.get("genre", ""),
+        form_data.get("style", ""),
+    )
+
+
+def get_open_file_soft_limit():
+    if resource is None or not hasattr(resource, "RLIMIT_NOFILE"):
+        return None
+    try:
+        soft_limit, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+        return int(soft_limit)
+    except Exception:
+        return None
+
+
+def get_safe_page_worker_count(requested_workers):
+    requested_workers = max(int(Config.MIN_WORKERS), int(requested_workers))
+    soft_limit = get_open_file_soft_limit()
+    if soft_limit is None:
+        return requested_workers
+
+    available_fds = max(0, soft_limit - int(Config.FD_RESERVE))
+    if available_fds == 0:
+        return int(Config.MIN_WORKERS)
+
+    # Keep a conservative fd budget per worker to avoid EMFILE on low-limit machines.
+    max_workers_from_fds = max(int(Config.MIN_WORKERS), available_fds // 4)
+    return max(int(Config.MIN_WORKERS), min(requested_workers, max_workers_from_fds))
+
+
+def fetch_with_retries(scraper, url, *, headers=None, context="request"):
+    last_error = None
+    max_retries = max(1, int(Config.REQUEST_RETRIES))
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = scraper.get(
+                url, headers=headers, timeout=Config.REQUEST_TIMEOUT_SECONDS
+            )
+            if response.status_code == 200:
+                return response
+
+            if response.status_code not in RETRYABLE_STATUS_CODES:
+                return response
+
+            last_error = RuntimeError(
+                f"{context} got retryable status {response.status_code}"
+            )
+            print(
+                f"{context} attempt {attempt}/{max_retries} failed with status {response.status_code}: {url}"
+            )
+        except Exception as exc:
+            last_error = exc
+            print(f"{context} attempt {attempt}/{max_retries} failed: {exc} | {url}")
+
+        if attempt < max_retries:
+            delay = float(Config.RETRY_BACKOFF_SECONDS) * attempt
+            time.sleep(max(0.0, delay))
+
+    if last_error:
+        raise RuntimeError(
+            f"{context} failed after {max_retries} attempts: {last_error}"
+        )
+    raise RuntimeError(f"{context} failed after {max_retries} attempts")
+
+
 def worker(q, form_data, results_queue, year=0, count=0):
     while not q.empty():
         try:
@@ -30,7 +244,7 @@ def worker(q, form_data, results_queue, year=0, count=0):
             records = scrap_and_process(
                 form_data, start_page=page_number, year=year, count=count
             )
-            results_queue.put(records)
+            results_queue.put(records or [])
         except queue.Empty:
             break
 
@@ -46,23 +260,60 @@ def initiate_task(form_data, app_instance, unique_id):
 
         try:
             total_items = get_items(form_data)
+            limits = get_mode_limits(form_data)
 
-            if total_items <= 10000:
+            if limits["mode"] == "url" and total_items > int(
+                Config.URL_MODE_MAX_TOTAL_ITEMS
+            ):
+                raise ValueError(
+                    "URL too broad. Use only Discogs lists with 500,000 items or fewer "
+                    "(check the top line: '1 - 25 of X')."
+                )
+
+            if total_items <= limits["single_pass_limit"]:
                 records = run_task(form_data, app_instance)
                 all_records.extend(records)
-            elif total_items <= 20000:
+            elif total_items <= limits["dual_pass_limit"]:
                 records = run_task(form_data, app_instance)
                 all_records.extend(records)
                 records = run_task(form_data, app_instance, 0, total_items)
                 all_records.extend(records)
             else:
                 year_data = get_years(form_data)
+                if not year_data:
+                    if get_request_mode(form_data) == "url":
+                        raise ValueError(
+                            "URL too broad. Use only Discogs lists with 500,000 items or fewer."
+                        )
+                    raise ValueError(
+                        "Large seller inventory could not be split by year. Please retry."
+                    )
 
-                with concurrent.futures.ThreadPoolExecutor() as executor:
+                if limits["mode"] == "url":
+                    oversized_years = [
+                        (year, count)
+                        for year, count in year_data
+                        if count > limits["dual_pass_limit"]
+                    ]
+                    if oversized_years:
+                        raise ValueError(
+                            "URL too broad. Use only Discogs lists with 500,000 items or fewer."
+                        )
+
+                year_workers = min(
+                    max(1, int(Config.YEAR_TASK_MAX_WORKERS)),
+                    max(1, len(year_data)),
+                )
+                print(
+                    f"Running year split with {year_workers} concurrent year task(s) across {len(year_data)} buckets"
+                )
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=year_workers
+                ) as executor:
                     futures = []
 
                     for year, count in year_data:
-                        if count <= 10000:
+                        if count <= limits["single_pass_limit"]:
                             future = executor.submit(
                                 threaded_task, form_data, app_instance, year, count
                             )
@@ -87,6 +338,8 @@ def initiate_task(form_data, app_instance, unique_id):
 
         except Exception as e:
             print(f"Error in initiate_task function: {e}")
+            TASKS_STATUS[unique_id]["error"] = str(e) or "Failed to scrape data"
+            TASKS_STATUS[unique_id]["completed"] = True
 
 
 def run_task(form_data, app_instance, year=0, count=0):
@@ -95,14 +348,26 @@ def run_task(form_data, app_instance, year=0, count=0):
         all_records_task = []
         try:
             total_pages = get_threads(form_data, 1, year)
+            if total_pages == 0:
+                print("run_task end (no pages)")
+                return all_records_task
+
+            page_workers = min(
+                total_pages, get_safe_page_worker_count(Config.PAGE_FETCH_MAX_WORKERS)
+            )
+            print(
+                f"run_task year={year} total_pages={total_pages} using {page_workers} page worker(s)"
+            )
             task_queue = queue.Queue()
             results_queue = queue.Queue()
 
             for page_number in range(1, total_pages + 1):
                 task_queue.put(page_number)
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
-                for _ in range(100):
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=page_workers
+            ) as executor:
+                for _ in range(page_workers):
                     executor.submit(
                         worker,
                         task_queue,
@@ -126,11 +391,13 @@ def verify_seller(seller):
     try:
         print(f"Input: {seller}")
         scraper = cloudscraper.create_scraper()
-        response = scraper.get(
+        response = fetch_with_retries(
+            scraper,
             Config.DISCOGS_URL.format(
                 seller, "", "", "", 1
             ),  # Empty strings for vinyls, genre, and style
             headers=Config.headers_agent,
+            context="verify_seller",
         )
         print(response)
         if response.status_code == 200:
@@ -149,6 +416,32 @@ def verify_seller(seller):
             return False
     except Exception as e:
         print(f"Error in verify_seller function: {e}")
+        return False
+
+
+def verify_filtered_url(base_query_params):
+    try:
+        scraper = cloudscraper.create_scraper()
+        url = build_sell_list_page_url(base_query_params, 1, "listed,desc")
+        print(f"Verifying filtered URL: {url}")
+        response = fetch_with_retries(
+            scraper, url, headers=Config.headers_agent, context="verify_filtered_url"
+        )
+        print(response)
+        if response.status_code != 200:
+            print("Wrong status code")
+            return False
+
+        html = HTMLParser(response.text)
+        records = html.css(".no_marketplace_results")
+        if records:
+            print(".no_marketplace_results exists!")
+            return False
+
+        print(".no_marketplace_results does not exist!")
+        return True
+    except Exception as e:
+        print(f"Error in verify_filtered_url function: {e}")
         return False
 
 
@@ -184,56 +477,46 @@ def scrap_and_process(form_data, start_page=1, year=0, count=0):
     print("scrap_and_process start")
     scraper = cloudscraper.create_scraper()
     try:
-        # Debug print to see what parameters we're working with
         print(
-            f"Processing with params: vinyls={form_data['vinyls']}, genre={form_data.get('genre', '')}, style={form_data.get('style', '')}, page={start_page}"
+            f"Processing with params: mode={get_request_mode(form_data)}, page={start_page}, year={year}, count={count}"
         )
-
+        limits = get_mode_limits(form_data)
+        url = ""
+        label = "Scraping page"
         if year == 0 and count == 0:
-            url = Config.DISCOGS_URL.format(
-                form_data["user_input"],
-                form_data["vinyls"],
-                form_data.get("genre", ""),
-                form_data.get("style", ""),
-                start_page,
+            url = build_marketplace_page_url(
+                form_data, page=start_page, sort="listed,desc"
             )
-            print(f"Scraping page: {url}")
-            response = scraper.get(url, headers=Config.headers_agent)
+            label = "Scraping page"
 
         elif year == 0 and count != 0:
-            url = Config.DISCOGS_URL_ASC.format(
-                form_data["user_input"],
-                form_data["vinyls"],
-                form_data.get("genre", ""),
-                form_data.get("style", ""),
-                start_page,
+            url = build_marketplace_page_url(
+                form_data, page=start_page, sort="listed,asc"
             )
-            print(f"Scraping LARGE page: {url}")
-            response = scraper.get(url, headers=Config.headers_agent)
+            label = "Scraping LARGE page"
 
         elif year != 0:
-            if count <= 10000:
-                url = Config.DISCOGS_URL_YEAR_PAGE.format(
-                    form_data["user_input"],
-                    form_data["vinyls"],
-                    form_data.get("genre", ""),
-                    form_data.get("style", ""),
-                    year,
-                    start_page,
+            if count <= limits["single_pass_limit"]:
+                url = build_marketplace_page_url(
+                    form_data, page=start_page, sort="listed,desc", year=year
                 )
-                print(f"Scraping YEAR: {url}")
-                response = scraper.get(url, headers=Config.headers_agent)
+                label = "Scraping YEAR"
             else:
-                url = Config.DISCOGS_URL_YEAR_ASC_PAGE.format(
-                    form_data["user_input"],
-                    form_data["vinyls"],
-                    form_data.get("genre", ""),
-                    form_data.get("style", ""),
-                    year,
-                    start_page,
+                url = build_marketplace_page_url(
+                    form_data, page=start_page, sort="listed,asc", year=year
                 )
-                print(f"Scraping YEAR OVER 10 000: {url}")
-                response = scraper.get(url, headers=Config.headers_agent)
+                label = "Scraping YEAR OVER 10 000"
+
+        print(f"{label}: {url}")
+        response = fetch_with_retries(
+            scraper,
+            url,
+            headers=Config.headers_agent,
+            context=f"scrap_and_process page={start_page} year={year}",
+        )
+        if response.status_code != 200:
+            print(f"Non-200 page response ({response.status_code}) for {url}")
+            return []
 
         htmlParser = HTMLParser(response.text)
 
@@ -290,28 +573,30 @@ def scrap_and_process(form_data, start_page=1, year=0, count=0):
         return records
     except Exception as e:
         print(f"Error in scrap_and_process function: {e}")
+        return []
 
 
-def calculate_pages(value):
-    x = int(value / 250)
-    if value % 250 > 0:
+def calculate_pages(value, max_pages_per_segment):
+    x = int(value / int(Config.RESULTS_PER_PAGE))
+    if value % int(Config.RESULTS_PER_PAGE) > 0:
         x += 1
-    x = min(x, 40)
+    x = min(x, int(max_pages_per_segment))
     return x
 
 
 def get_years(form_data):
     print("get_years start")
     scraper = cloudscraper.create_scraper()
-    response = scraper.get(
-        Config.DISCOGS_URL_YEAR_LIST.format(
-            form_data["user_input"],
-            form_data["vinyls"],
-            form_data.get("genre", ""),
-            form_data.get("style", ""),
-        ),
+    year_facets_url = build_year_facets_url(form_data)
+    print(f"Year facets URL: {year_facets_url}")
+    response = fetch_with_retries(
+        scraper,
+        year_facets_url,
         headers=Config.headers_agent,
+        context="get_years",
     )
+    if response.status_code != 200:
+        raise RuntimeError(f"get_years returned status {response.status_code}")
 
     html = HTMLParser(response.text)
 
@@ -331,29 +616,16 @@ def get_years(form_data):
 def get_threads(form_data, start_page=1, year=0):
     print("get_threads start")
     scraper = cloudscraper.create_scraper()
-    if year == 0:
-        response = scraper.get(
-            Config.DISCOGS_URL.format(
-                form_data["user_input"],
-                form_data["vinyls"],
-                form_data.get("genre", ""),
-                form_data.get("style", ""),
-                start_page,
-            ),
-            headers=Config.headers_agent,
-        )
-    elif year != 0:
-        response = scraper.get(
-            Config.DISCOGS_URL_YEAR_PAGE.format(
-                form_data["user_input"],
-                form_data["vinyls"],
-                form_data.get("genre", ""),
-                form_data.get("style", ""),
-                year,
-                start_page,
-            ),
-            headers=Config.headers_agent,
-        )
+    response = fetch_with_retries(
+        scraper,
+        build_marketplace_page_url(
+            form_data, page=start_page, sort="listed,desc", year=year
+        ),
+        headers=Config.headers_agent,
+        context=f"get_threads year={year}",
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"get_threads returned status {response.status_code}")
 
     html = HTMLParser(response.text)
     pagination_total = html.css(".pagination.top .pagination_total")
@@ -362,22 +634,21 @@ def get_threads(form_data, start_page=1, year=0):
     for node in pagination_total:
         total_items = int(node.text().split("of")[-1].strip().replace(",", ""))
     print("get_threads end")
-    return calculate_pages(total_items)
+    limits = get_mode_limits(form_data)
+    return calculate_pages(total_items, limits["max_pages_per_segment"])
 
 
 def get_items(form_data, start_page=1):
     print("get_items start")
     scraper = cloudscraper.create_scraper()
-    response = scraper.get(
-        Config.DISCOGS_URL.format(
-            form_data["user_input"],
-            form_data["vinyls"],
-            form_data.get("genre", ""),
-            form_data.get("style", ""),
-            start_page,
-        ),
+    response = fetch_with_retries(
+        scraper,
+        build_marketplace_page_url(form_data, page=start_page, sort="listed,desc"),
         headers=Config.headers_agent,
+        context="get_items",
     )
+    if response.status_code != 200:
+        raise RuntimeError(f"get_items returned status {response.status_code}")
 
     html = HTMLParser(response.text)
     pagination_total = html.css(".pagination.top .pagination_total")

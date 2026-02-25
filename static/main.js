@@ -2,16 +2,27 @@ function pollingData() {
   return {
     isLoading: false,
     userInput: "",
+    setMessage(message, isError = false) {
+      const messageNode = document.getElementById("message");
+      messageNode.innerHTML = message || "";
+      messageNode.style.color = isError ? "#b91c1c" : "#0a5a54";
+    },
     submitForm() {
       this.isLoading = true;
-      document.getElementById("message").innerHTML = "";
-      const inputElement = document.querySelector("input[name='user_input']");
-      const userInput = inputElement.value.trim();
+      this.setMessage("");
+      const sellerInput = document
+        .querySelector("input[name='user_input']")
+        .value.trim();
+      const filteredUrlInput = document
+        .querySelector("input[name='filtered_url']")
+        .value.trim();
 
-      if (!userInput) {
+      if (!sellerInput && !filteredUrlInput) {
         this.isLoading = false;
-        document.getElementById("message").innerHTML =
-          "Please enter a valid seller's name";
+        this.setMessage(
+          "Please enter a seller name or a Discogs /sell/list or /seller/username/profile URL",
+          true
+        );
         return;
       }
 
@@ -19,7 +30,7 @@ function pollingData() {
       fetch("/", { method: "POST", body: formData })
         .then((response) => response.json())
         .then((data) => {
-          document.getElementById("message").innerHTML = data.message;
+          this.setMessage(data.message, !data.success);
           if (data.success) {
             this.uniqueId = data.unique_id;
             this.pollForResult();
@@ -47,6 +58,11 @@ function pollingData() {
           .then((data) => {
             if (data.completed) {
               clearInterval(intervalId);
+              if (data.error) {
+                this.isLoading = false;
+                this.setMessage(data.error, true);
+                return;
+              }
               this.isLoading = false;
               window.location.href = `/table/${this.uniqueId}`;
             }

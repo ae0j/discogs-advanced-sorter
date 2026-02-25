@@ -2,10 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Discogs filter</title>
+    <title>Discogs Advanced Sorter - Results</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Press+Start+2P&display=swap"
       rel="stylesheet"
     />
     <link
@@ -25,36 +27,48 @@
     ></script>
   </head>
   <body>
-    <div class="button-container">
-      <a href="/" class="button">New search</a>
-    </div>
-    <div
-      class="container"
-      data-url="{{ url_for('serve_table_data', unique_id=unique_id) }}"
-    >
-      <table id="myTable" class="display cell-border compact">
-        <thead>
-          <tr>
-            <th>Hot Buy</th>
-            <th>Rarity score</th>
-            <th>Desire Gap</th>
-            <th>Have</th>
-            <th>Want</th>
-            <th>Artist</th>
-            <th>Title</th>
-            <th>Format</th>
-            <th>Media Condition</th>
-            <th>Price</th>
-            <th>Link</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-      <div id="customPage">
-        <label for="pageNumber">Go to page: </label>
-        <input type="number" id="pageNumber" min="1" />
-        <button id="goToPage">Go</button>
-      </div>
-    </div>
+    <main class="app-shell">
+      <div class="ambient-shape shape-1" aria-hidden="true"></div>
+      <div class="ambient-shape shape-2" aria-hidden="true"></div>
+
+      <section
+        class="results-panel container"
+        data-url="{{ url_for('serve_table_data', unique_id=unique_id) }}"
+      >
+        <header class="results-header">
+          <div class="title-wrap">
+            <h1>Sorted Inventory</h1>
+          </div>
+          <a href="/" class="button">New Search</a>
+        </header>
+
+        <div class="table-shell">
+          <table id="myTable" class="display cell-border compact">
+            <thead>
+              <tr>
+                <th>Hot Buy</th>
+                <th>Rarity score</th>
+                <th>Desire Gap</th>
+                <th>Have</th>
+                <th>Want</th>
+                <th>Artist</th>
+                <th>Title</th>
+                <th>Format</th>
+                <th>Media Condition</th>
+                <th>Price</th>
+                <th>Link</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div id="customPage">
+          <label for="pageNumber">Go to page</label>
+          <input type="number" id="pageNumber" min="1" />
+          <button id="goToPage">Jump</button>
+        </div>
+      </section>
+    </main>
   </body>
 </html>

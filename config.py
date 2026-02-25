@@ -1,8 +1,9 @@
 class Config:
-    SERVER_NAME = "127.0.0.1:5000"
     APPLICATION_ROOT = "/"
     PREFERRED_URL_SCHEME = "http"
     # Base URLs with placeholders for seller, format/vinyl, genre, style, page, and year
+    DISCOGS_SELL_LIST_URL = "https://www.discogs.com/sell/list"
+    DISCOGS_SELL_FACETS_URL = "https://www.discogs.com/sell/_mp_facets"
     DISCOGS_URL = "https://www.discogs.com/seller/{}/profile?sort=listed%2Cdesc&limit=250{}{}{}&page={}"
     DISCOGS_URL_ASC = "https://www.discogs.com/seller/{}/profile?sort=listed%2Casc&limit=250{}{}{}&page={}"
     DISCOGS_URL_YEAR_PAGE = "https://www.discogs.com/seller/{}/profile?sort=listed%2Cdesc&limit=250{}{}{}&year={}&page={}"
@@ -25,3 +26,14 @@ class Config:
     }
 
     max_workers = 100
+    RESULTS_PER_PAGE = 250
+    SELLER_MODE_MAX_PAGES_PER_SEGMENT = 40
+    URL_MODE_MAX_PAGES_PER_SEGMENT = 1000
+    URL_MODE_MAX_TOTAL_ITEMS = 500000
+    PAGE_FETCH_MAX_WORKERS = 40
+    YEAR_TASK_MAX_WORKERS = 6
+    MIN_WORKERS = 4
+    FD_RESERVE = 128
+    REQUEST_TIMEOUT_SECONDS = 30
+    REQUEST_RETRIES = 3
+    RETRY_BACKOFF_SECONDS = 1.0

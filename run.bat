@@ -61,8 +61,11 @@ if errorlevel 1 goto :error
 python -m pip install -r requirements.txt
 if errorlevel 1 goto :error
 
-echo Starting app at http://127.0.0.1:5000
-flask --app app run
+if not defined APP_HOST set "APP_HOST=127.0.0.1"
+if not defined APP_PORT set "APP_PORT=5080"
+
+echo Starting app at http://%APP_HOST%:%APP_PORT%
+flask --app app run --host %APP_HOST% --port %APP_PORT%
 goto :eof
 
 :error

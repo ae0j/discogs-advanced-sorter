@@ -1,9 +1,15 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Discogs filter</title>
+    <title>Discogs Advanced Sorter</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Press+Start+2P&display=swap"
+      rel="stylesheet"
+    />
     <link
       rel="stylesheet"
       type="text/css"
@@ -14,35 +20,54 @@
     <script src="https://unpkg.com/htmx.org@1.9.5"></script>
   </head>
   <body>
-    <div id="main-div" x-data="pollingData()" x-init="init()">
-      <form @submit.prevent="submitForm">
-        <input
-          type="text"
-          name="user_input"
-          id="user_input"
-          placeholder="Enter seller's name"
-          autofocus
-        />
+    <main class="app-shell" x-data="pollingData()" x-init="init()">
+      <div class="ambient-shape shape-1" aria-hidden="true"></div>
+      <div class="ambient-shape shape-2" aria-hidden="true"></div>
+      <section id="main-div" class="panel">
+        <header class="panel-header">
+          <h1>Discogs Advanced Sorter</h1>
+          <p>
+            Enter a seller name for a full catalog scrape, or paste a filtered
+            Discogs URL.
+          </p>
+        </header>
 
-        <div class="form-container">
+        <form @submit.prevent="submitForm" class="search-form">
+          <label for="user_input">Seller Name</label>
+          <input
+            type="text"
+            name="user_input"
+            id="user_input"
+            placeholder="e.g. xx_juve_xx"
+            autofocus
+          />
+
+          <div class="divider" role="presentation">or</div>
+
+          <label for="filtered_url">Filtered Discogs URL</label>
+          <input
+            type="text"
+            name="filtered_url"
+            id="filtered_url"
+            placeholder="https://www.discogs.com/sell/list?... or https://www.discogs.com/seller/koreadisco/profile?..."
+          />
+          <p class="hint">
+            Use only lists with <strong>500,000 items or fewer</strong> (check
+            the top line on Discogs: <strong>1 - 25 of X</strong>).
+          </p>
+
           <button type="submit" id="confirmButton" :disabled="isLoading">
             Get Inventory
           </button>
-          <div class="checkbox-container">
-            <input type="checkbox" id="vinylsOnly" name="vinyls_only" />
-            <label for="vinylsOnly" class="checkbox">Get vinyls only</label>
-          </div>
-          <div class="input-container">
-            <input type="text" id="genre" name="genre" placeholder="Genre (e.g., Electronic)" />
-          </div>
-          <div class="input-container">
-            <input type="text" id="style" name="style" placeholder="Style (e.g., House)" />
-          </div>
+        </form>
+
+        <div class="loader-wrap" x-show="isLoading" style="display: none">
+          <div class="pixel-vinyl" aria-hidden="true"></div>
+          <p class="loader-text">Digging through crates...</p>
         </div>
-      </form>
-      <div class="loading-bar" x-show="isLoading" style="display: none"></div>
-      <div id="message" class="message"></div>
-      <div id="output-div"></div>
-    </div>
+        <div id="message" class="message"></div>
+        <div id="output-div"></div>
+      </section>
+    </main>
   </body>
 </html>
