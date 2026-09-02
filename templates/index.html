@@ -51,19 +51,36 @@
             id="filtered_url"
             placeholder="https://www.discogs.com/sell/list?... or https://www.discogs.com/seller/koreadisco/profile?..."
           />
-          <p class="hint">
-            Use only lists with <strong>500,000 items or fewer</strong> (check
-            the top line on Discogs: <strong>1 - 25 of X</strong>).
-          </p>
-
           <button type="submit" id="confirmButton" :disabled="isLoading">
             Get Inventory
           </button>
         </form>
 
-        <div class="loader-wrap" x-show="isLoading" style="display: none">
+        <div
+          class="loader-wrap"
+          x-show="isLoading"
+          style="display: none"
+          role="status"
+          aria-live="polite"
+        >
           <div class="pixel-vinyl" aria-hidden="true"></div>
-          <p class="loader-text">Digging through crates...</p>
+          <div class="loader-details">
+            <p class="loader-text" x-text="loadingText()">Queued</p>
+            <div
+              class="progress-track"
+              x-show="total !== null"
+              role="progressbar"
+              aria-label="Discogs inventory progress"
+              :aria-valuenow="progressPercent()"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              <div
+                class="progress-fill"
+                :style="`width: ${progressPercent()}%`"
+              ></div>
+            </div>
+          </div>
         </div>
         <div id="message" class="message"></div>
         <div id="output-div"></div>

@@ -2,7 +2,12 @@
 
 ## Features
 
-- Retrieves a seller's inventory and displays it as an interactive HTML table.
+- Retrieves current Marketplace data with a headless HTTP client and parallel
+  cursor workers; no browser window or browser installation is required.
+- Reads current Discogs `/shop/list/` filters as well as legacy `/sell/list`
+  and seller-profile URLs.
+- Supports filtered lists containing up to 500,000 listings, including lists
+  spanning multiple sellers.
 - Offers sorting options including Want, Have, Desire Gap, Rarity Score, Hot Buy, and more.
 
 ## Preview
@@ -56,8 +61,10 @@ flask --app app run --host 127.0.0.1 --port 5080
 
 ## Usage
 
-1. Input the seller name, or paste a full Discogs `/sell/list` URL or `/seller/username/profile` URL.
-2. If using URL mode, use only Discogs lists with `500,000` items or fewer (check the top line: `1 - 25 of X`).
+1. Input the seller name, or paste a full Discogs `/shop/list/`, legacy
+   `/sell/list`, or `/seller/username/profile` URL.
+2. If using URL mode, the filtered Discogs list can contain up to `500,000`
+   items.
 3. Click **Get Inventory**.
 4. Browse the resulting table and sort columns.
 
@@ -65,8 +72,10 @@ If both seller and URL are filled, URL mode is used.
 
 ## Troubleshooting
 
-- `This seller does not exist` with a known seller:
-  - Retry a few times. Discogs can return temporary anti-bot responses.
+- A known seller temporarily fails:
+  - The sorter now distinguishes a missing seller from a Discogs security check
+    or rate limit. Follow the displayed retry message instead of retyping the
+    seller name.
 - `Too many open files`:
   - On macOS/Linux, run `ulimit -n 65535` in the same terminal before starting.
   - The `run.command` script already applies a higher limit automatically.
@@ -74,16 +83,16 @@ If both seller and URL are filled, URL mode is used.
   - Install Python 3.10, 3.11, 3.12, or 3.13 from `python.org`.
   - Disable `python.exe` and `python3.exe` in **App execution aliases**.
   - Re-run `run.bat`.
-- URL mode with very broad filters can fail if Discogs does not expose year facets:
-  - Narrow your filters directly on Discogs and retry with the new URL.
 - URL mode says the URL is too broad:
-  - On Discogs, look at the top counter line (`1 - 25 of X`).
-  - Use only lists where `X` is `500,000` or less.
+  - Narrow the Discogs filters to `500,000` listings or fewer.
 - Browser shows `403` on localhost:
   - Use the exact printed URL from terminal (default is `http://127.0.0.1:5080`).
   - On macOS, port `5000` can be used by system services, so this project defaults to `5080`.
 
 ## Limitations
 
-- May not perform optimally with very large seller inventories (exceeding 500,000 records).
-- Records without a release year are not currently retrieved.
+- Discogs can still apply temporary Marketplace security checks. These are now
+  reported as retryable failures instead of "seller does not exist" or an empty
+  result table.
+- Very large inventories can change while they are being read. The sorter
+  tolerates small live-market drift but rejects materially incomplete results.
