@@ -14,9 +14,11 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlparse, urlunparse
 
-from curl_cffi import requests as curl_requests
-
 from config import Config
+from curl_compat import load_curl_requests
+
+
+curl_requests = load_curl_requests()
 
 
 TASKS_STATUS = {}
