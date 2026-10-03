@@ -16,6 +16,11 @@ from urllib.parse import parse_qsl, quote, unquote, urlencode, urlparse, urlunpa
 
 from config import Config
 from curl_compat import load_curl_requests
+from marketplace_queries import (
+    QueryDiscoveryError,
+    client_asset_urls,
+    query_definitions_from_bundle,
+)
 
 
 curl_requests = load_curl_requests()
@@ -28,7 +33,7 @@ SUPPORTED_MARKETPLACE_PATHS = {"/sell/list", "/shop/list"}
 RETRYABLE_STATUS_CODES = {403, 408, 425, 429, 500, 502, 503, 504, 520, 522, 524}
 
 MARKETPLACE_SEARCH_HASH = (
-    "f0f3f63df448343350caf9d10f0dbf6f9810997bc436e01bcad03f95f8e4a624"
+    "7ce2bd7801f216b0999648d626c935fc86c8fd85e562529bd87b690c974f08c2"
 )
 STYLES_HASH = (
     "4c514376b334ff2363ebf0c1b137de12d315ea16f6d492d20e46c89e7116843d"
@@ -162,6 +167,9 @@ _CONDITION_ABBREVIATIONS = {
 _thread_local = threading.local()
 _styles_lock = threading.Lock()
 _style_ids_by_name = None
+_persisted_queries_lock = threading.Lock()
+_persisted_queries = {}
+_persisted_refresh_failure = None
 _request_gate = threading.BoundedSemaphore(
     max(1, int(Config.MARKETPLACE_MAX_IN_FLIGHT_REQUESTS))
 )
@@ -191,6 +199,10 @@ class DiscogsUnsupportedUrlError(DiscogsError, ValueError):
 
 
 class DiscogsProtocolError(DiscogsError):
+    pass
+
+
+class DiscogsPersistedQueryError(DiscogsProtocolError):
     pass
 
 
@@ -379,7 +391,9 @@ def _response_detail(response):
     return f": {message}" if message else ""
 
 
-def _request_json(method, url, *, params=None, json_body=None, headers=None, context):
+def _request_discogs(
+    method, url, *, params=None, json_body=None, headers=None, context, text=False
+):
     last_error = None
     attempts = max(1, int(Config.REQUEST_RETRIES))
 
@@ -394,11 +408,18 @@ def _request_json(method, url, *, params=None, json_body=None, headers=None, con
                     json=json_body,
                     headers=headers,
                     timeout=float(Config.REQUEST_TIMEOUT_SECONDS),
+                    allow_redirects=not text,
                 )
         except Exception as exc:
             last_error = exc
         else:
             if response.status_code == 200:
+                if text:
+                    if len(response.content) > 4 * 1024 * 1024:
+                        raise DiscogsProtocolError(
+                            "Discogs returned an unexpectedly large Marketplace client."
+                        )
+                    return response.text
                 try:
                     return response.json()
                 except Exception as exc:
@@ -444,6 +465,16 @@ def _request_json(method, url, *, params=None, json_body=None, headers=None, con
     ) from last_error
 
 
+def _request_json(method, url, **kwargs):
+    return _request_discogs(method, url, **kwargs)
+
+
+def _request_client_text(url):
+    return _request_discogs(
+        "GET", url, text=True, context="Marketplace query definitions"
+    )
+
+
 def _graphql_headers(referer):
     return {
         "Accept": "application/graphql-response+json,application/json;q=0.9",
@@ -466,6 +497,17 @@ def _graphql_post(body, referer, context):
         errors = payload.get("errors") if isinstance(payload, dict) else None
         if not errors:
             return payload
+
+        if any(
+            error.get("message") == "PersistedQueryNotFound"
+            or (error.get("extensions") or {}).get("code")
+            == "PERSISTED_QUERY_NOT_FOUND"
+            for error in errors
+        ):
+            raise DiscogsPersistedQueryError(
+                "Discogs changed its Marketplace query definitions. "
+                "Please update the sorter."
+            )
 
         messages = [str(error.get("message") or "") for error in errors]
         combined = " ".join(messages).casefold()
@@ -501,16 +543,80 @@ def _graphql_post(body, referer, context):
     )
 
 
+def _refresh_persisted_query(operation_name, previous):
+    global _persisted_refresh_failure
+    with _persisted_queries_lock:
+        current = _persisted_queries.get(operation_name)
+        # Another worker may already have refreshed this generation while we
+        # waited. Reuse its document even if only the server's APQ cache reset.
+        if current is not None and current is not previous:
+            return current
+        if _persisted_refresh_failure is not None:
+            failed_at, failure = _persisted_refresh_failure
+            if time.monotonic() - failed_at < 30:
+                raise failure
+        try:
+            page_url = f"{Config.DISCOGS_WEB_BASE}/shop/list"
+            assets = client_asset_urls(_request_client_text(page_url), page_url)
+            definitions = {}
+            for url in assets:
+                found = query_definitions_from_bundle(_request_client_text(url))
+                for name, definition in found.items():
+                    if name in definitions and definitions[name] != definition:
+                        raise QueryDiscoveryError(f"Ambiguous {name} query definitions.")
+                    definitions[name] = definition
+            if operation_name not in definitions:
+                raise QueryDiscoveryError(f"Missing registered {operation_name} query.")
+        except (DiscogsError, QueryDiscoveryError) as exc:
+            failure = (
+                exc
+                if isinstance(exc, DiscogsError)
+                else DiscogsProtocolError(
+                    "Discogs changed its Marketplace client and the sorter could not "
+                    "refresh its query definitions. Please update the sorter."
+                )
+            )
+            _persisted_refresh_failure = (time.monotonic(), failure)
+            if failure is exc:
+                raise
+            raise failure from exc
+        _persisted_queries.update(definitions)
+        _persisted_refresh_failure = None
+        return definitions[operation_name]
+
+
 def _persisted_query(operation_name, variables, sha256_hash, referer):
+    definition = _persisted_queries.get(operation_name)
     body = {
         "operationName": operation_name,
         "variables": variables,
         "extensions": {
             "clientLibrary": {"name": "@apollo/client", "version": "4.2.9"},
-            "persistedQuery": {"version": 1, "sha256Hash": sha256_hash},
+            "persistedQuery": {
+                "version": 1,
+                "sha256Hash": definition.sha256_hash if definition else sha256_hash,
+            },
         },
     }
-    return _graphql_post(body, referer, f"{operation_name} query")
+    try:
+        return _graphql_post(body, referer, f"{operation_name} query")
+    except DiscogsPersistedQueryError:
+        print(f"Discogs {operation_name}: refreshing expired query definition")
+        definition = _refresh_persisted_query(operation_name, definition)
+        # Include the approved document on recovery, as Apollo does on an APQ
+        # miss. Subsequent requests use its cached hash without extra fetches.
+        body = {
+            **body,
+            "query": definition.document,
+            "extensions": {
+                **body["extensions"],
+                "persistedQuery": {
+                    "version": 1,
+                    "sha256Hash": definition.sha256_hash,
+                },
+            },
+        }
+        return _graphql_post(body, referer, f"{operation_name} query")
 
 
 def _resolve_seller_id(username):
